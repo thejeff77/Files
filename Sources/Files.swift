@@ -24,6 +24,21 @@
 
 import Foundation
 
+// MARK: - Threading Helpers
+
+class Sync {
+    public class func synced(_ lock: Any, closure: () -> ()) {
+        objc_sync_enter(lock)
+        defer { objc_sync_exit(lock) }
+        closure()
+    }
+    public class func syncedReturn(_ lock: Any, closure: () -> (Any?)) -> Any? {
+        objc_sync_enter(lock)
+        defer { objc_sync_exit(lock) }
+        return closure()
+    }
+}
+
 // MARK: - Locations
 
 /// Enum describing various kinds of locations that can be found on a file system.
@@ -862,23 +877,26 @@ public extension Folder {
     }
 }
 
-#if os(macOS)
+
 public extension Folder {
     /// The current user's Documents folder
     static var documents: Folder? {
-        let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
-        guard let url = urls.first else { return nil }
-        return try? Folder(path: url.relativePath)
+        let dirPath = Sync.syncedReturn(self, closure: { // Lock around retreival, not thread safe.
+            let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+            guard let url = urls.first else { return nil }
+            return try? Folder(path: url.relativePath)
+        })
+        return dirPath as? Folder
     }
-
+    #if os(macOS)
     /// The current user's Library folder
     static var library: Folder? {
         let urls = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)
         guard let url = urls.first else { return nil }
         return try? Folder(path: url.relativePath)
     }
+    #endif
 }
-#endif
 
 // MARK: - Errors
 
